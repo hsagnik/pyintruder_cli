@@ -31,23 +31,23 @@ pip install -r requirements.txt
 
 ## Usage
 
-PyIntruder CLI uses the double section symbol `§§` to mark the position for payload insertion in URLs, request bodies, or headers.
+PyIntruder CLI uses the symbol `$p$` to mark the position for payload insertion in URLs, request bodies, or headers.
 
 ### Basic Examples:
 
 1. **Wordlist attack against a login form:**
    ```bash
-   python3 pyintruder_cli.py -u "http://example.com/login?user=§§" -w /path/to/usernames.txt
+   python3 pyintruder_cli.py -u 'http://example.com/login?user=$p$' -w /path/to/usernames.txt
    ```
 
 2. **Numeric fuzzing with 10 threads:**
    ```bash
-   python3 pyintruder_cli.py -u "http://example.com/products?id=§§" -n 1-100 -t 10
+   python3 pyintruder_cli.py -u 'http://example.com/products?id=$p$' -n 1-100 -t 10
    ```
 
 3. **POST request with password testing:**
    ```bash
-   python3 pyintruder_cli.py -u "http://example.com/login" -X POST -d "username=admin&password=§§" -w /path/to/passwords.txt
+   python3 pyintruder_cli.py -u 'http://example.com/login' -X POST -d 'username=admin&password=$p$' -w /path/to/passwords.txt
    ```
 
 4. **Using a request file (easier for complex requests):**
@@ -61,37 +61,42 @@ PyIntruder CLI uses the double section symbol `§§` to mark the position for pa
    Host: example.com
    Content-Type: application/json
    
-   {"username": "admin", "password": "§§"}
+   {"username": "admin", "password": "$p$"}
    ```
 
 5. **Bruteforce with custom character set:**
    ```bash
-   python3 pyintruder_cli.py -u "http://example.com/login?pin=§§" -b "abcdefghijklmnopqrstuvwxyz:1:3"
+   python3 pyintruder_cli.py -u 'http://example.com/login?pin=$p$' -b 'abcdefghijklmnopqrstuvwxyz:1:3'
    ```
 
 6. **Adding Base64 encoding to payloads:**
    ```bash
-   python3 pyintruder_cli.py -u "http://example.com/api?data=§§" -w /path/to/payloads.txt --encoding Base64
+   python3 pyintruder_cli.py -u 'http://example.com/api?data=$p$' -w /path/to/payloads.txt --encoding Base64
    ```
 
 7. **Save results to a JSON file:**
    ```bash
-   python3 pyintruder_cli.py -u "http://example.com/login?user=§§" -w /path/to/usernames.txt -o results.json -v
+   python3 pyintruder_cli.py -u 'http://example.com/login?user=$p$' -w /path/to/usernames.txt -o results.json -v
    ```
 
 8. **Using custom headers with a position marker:**
    ```bash
-   python3 pyintruder_cli.py -u "http://example.com/api" -X GET -H "Authorization: Bearer §§" -w /path/to/tokens.txt
+   python3 pyintruder_cli.py -u 'http://example.com/api' -X GET -H 'Authorization: Bearer $p$' -w /path/to/tokens.txt
    ```
 
 9. **Adding prefix and suffix to payloads:**
    ```bash
-   python3 pyintruder_cli.py -u "http://example.com/search?q=§§" -w /path/to/keywords.txt --prefix "search+" --suffix "*"
+   python3 pyintruder_cli.py -u 'http://example.com/search?q=$p$' -w /path/to/keywords.txt --prefix 'search+' --suffix '*'
    ```
 
 10. **URL-encoding payloads with special characters:**
     ```bash
-    python3 pyintruder_cli.py -u "http://example.com/search?q=§§" -w /path/to/special_chars.txt --url-encode
+    python3 pyintruder_cli.py -u 'http://example.com/search?q=$p$' -w /path/to/special_chars.txt --url-encode
+    ```
+
+11. **Using a custom position marker:**
+    ```bash
+    python3 pyintruder_cli.py -u 'http://example.com/search?q=INJECT_HERE' -m 'INJECT_HERE' -w /path/to/payloads.txt
     ```
 
 For more advanced usage options, run: `python3 pyintruder_cli.py --help`
