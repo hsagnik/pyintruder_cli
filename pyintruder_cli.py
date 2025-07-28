@@ -78,11 +78,16 @@ class PyIntruderCLI:
         self.position_marker = "$p$"  # Default position marker changed to $p$
         self.replacement_marker = "@@@@@@"  # Temporary marker for replacement
         self.count = 0
+        
+        # Multi-position support
+        self.multi_position = False
+        self.position_configs = []  # List of position configurations
+        self.combined_payloads = []  # Combined payload for multi-position attacks
     
     def display_banner(self):
         """Display a pure ASCII banner with copyright information"""
         current_year = datetime.now().year
-        version = "1.1.0"  # Updated version: minor version increase for new features
+        version = "1.2.1"  # Updated version: patch version increase for numbered position markers
         
         banner = f"""
 {Fore.CYAN}        ______       _____       _                  _            
@@ -113,10 +118,22 @@ class PyIntruderCLI:
         
         # Attack type selection
         attack_group = parser.add_argument_group('Attack Type (required, choose one)')
-        attack = attack_group.add_mutually_exclusive_group(required=True)
+        attack = attack_group.add_mutually_exclusive_group(required=False)
         attack.add_argument('-w', '--wordlist', help='Path to wordlist file')
         attack.add_argument('-n', '--numbers', help='Range of numbers in format START-END-STEP')
         attack.add_argument('-b', '--bruteforce', help='Bruteforce with charset in format CHARSET:MIN_LEN:MAX_LEN')
+        attack.add_argument('-mp', '--multi-position', action='append', nargs=2, metavar=('MARKER', 'CONFIG'),
+                           help='Multi-position fuzzing: MARKER CONFIG. '
+                                'CONFIG format: w:wordlist.txt, n:1-100-1, or b:chars:1:3. '
+                                'Can be used multiple times for different positions.')
+        
+        # Numbered position support (alternative to -mp) - separate group
+        multi_group = parser.add_argument_group('Multi-Position using $p1$, $p2$, etc. (alternative to -mp)')
+        multi_group.add_argument('-p1', '--position1', help='Position 1 config for $p1$: w:wordlist.txt, n:1-100-1, or b:chars:1:3')
+        multi_group.add_argument('-p2', '--position2', help='Position 2 config for $p2$: w:wordlist.txt, n:1-100-1, or b:chars:1:3')
+        multi_group.add_argument('-p3', '--position3', help='Position 3 config for $p3$: w:wordlist.txt, n:1-100-1, or b:chars:1:3')
+        multi_group.add_argument('-p4', '--position4', help='Position 4 config for $p4$: w:wordlist.txt, n:1-100-1, or b:chars:1:3')
+        multi_group.add_argument('-p5', '--position5', help='Position 5 config for $p5$: w:wordlist.txt, n:1-100-1, or b:chars:1:3')
         
         # Request related arguments
         req_group = parser.add_argument_group('Request Options')
@@ -145,6 +162,32 @@ class PyIntruderCLI:
                 
         args = parser.parse_args()
         
+        # Check for multi-position mode
+        if args.multi_position:
+            self.multi_position = True
+            self.parse_multi_position_config(args.multi_position)
+        
+        # Check for numbered position mode
+        numbered_positions = []
+        for i in range(1, 6):  # Support p1 through p5
+            pos_arg = getattr(args, f'position{i}', None)
+            if pos_arg:
+                numbered_positions.append((f'$p{i}$', pos_arg))
+        
+        if numbered_positions:
+            if self.multi_position:
+                print('Error: Cannot use both -mp and -p1/-p2/etc. Choose one method.')
+                sys.exit(1)
+            self.multi_position = True
+            self.parse_multi_position_config(numbered_positions)
+        
+        # Check if we have any attack type specified
+        has_attack_type = (args.wordlist or args.numbers or args.bruteforce or 
+                          args.multi_position or numbered_positions)
+        
+        if not has_attack_type:
+            parser.error('Must specify an attack type: -w, -n, -b, -mp, or -p1/-p2/etc.')
+        
         # Process the arguments
         if args.request_file:
             self.parse_request_file(args.request_file)
@@ -161,25 +204,26 @@ class PyIntruderCLI:
                     name, value = header.split(':', 1)
                     self.headers[name.strip()] = value.strip()
         
-        # Attack type
-        if args.wordlist:
-            self.attack_type = 'Wordlist'
-            self.wordlist_filename = args.wordlist
-        elif args.numbers:
-            self.attack_type = 'Numbers'
-            parts = args.numbers.split('-')
-            if len(parts) >= 2:
-                self.from_numbers = int(parts[0])
-                self.to_numbers = int(parts[1])
-                self.step_numbers = int(parts[2]) if len(parts) > 2 else 1
-        elif args.bruteforce:
-            self.attack_type = 'BruteForce'
-            parts = args.bruteforce.split(':')
-            if len(parts) != 3:
-                parser.error('Bruteforce format should be CHARSET:MIN:MAX')
-            self.bruteforce_charset = parts[0]
-            self.min_length = int(parts[1])
-            self.max_length = int(parts[2])
+        # Attack type (only for single-position mode)
+        if not self.multi_position:
+            if args.wordlist:
+                self.attack_type = 'Wordlist'
+                self.wordlist_filename = args.wordlist
+            elif args.numbers:
+                self.attack_type = 'Numbers'
+                parts = args.numbers.split('-')
+                if len(parts) >= 2:
+                    self.from_numbers = int(parts[0])
+                    self.to_numbers = int(parts[1])
+                    self.step_numbers = int(parts[2]) if len(parts) > 2 else 1
+            elif args.bruteforce:
+                self.attack_type = 'BruteForce'
+                parts = args.bruteforce.split(':')
+                if len(parts) != 3:
+                    parser.error('Bruteforce format should be CHARSET:MIN:MAX')
+                self.bruteforce_charset = parts[0]
+                self.min_length = int(parts[1])
+                self.max_length = int(parts[2])
         
         # Processing options
         self.url_encode = args.url_encode
@@ -194,19 +238,26 @@ class PyIntruderCLI:
         self.verbose = args.verbose
         self.show_headers = args.show_headers
         
+        # Set position marker
+        self.position_marker = args.marker
+        
         # Validate that we have position markers
-        has_position = False
-        if '$p$' in self.url:
-            has_position = True
-        if '$p$' in self.data:
-            has_position = True
-        for header_name in self.headers:
-            if '$p$' in self.headers[header_name]:
+        if not self.multi_position:
+            has_position = False
+            if self.position_marker in self.url:
                 has_position = True
-                break
-                
-        if not has_position:
-            parser.error('No position marker ($p$) found in the request')
+            if self.position_marker in self.data:
+                has_position = True
+            for header_name in self.headers:
+                if self.position_marker in self.headers[header_name]:
+                    has_position = True
+                    break
+                    
+            if not has_position:
+                parser.error(f'No position marker ({self.position_marker}) found in the request')
+        else:
+            # Validate multi-position markers
+            self.validate_multi_position_markers()
             
         # Process positions
         self.process_positions()
@@ -228,12 +279,19 @@ class PyIntruderCLI:
                 if len(path_parts) > 1:
                     self.data = path_parts[1]
                 
-                # Get the host from the headers to build the full URL
+                # Get the host and other headers
                 host = ""
                 for i in range(1, len(lines)):
+                    if not lines[i].strip():
+                        break
+                    
                     if lines[i].lower().startswith("host:"):
                         host = lines[i][5:].strip()
-                        break
+                    
+                    # Add the header
+                    header_parts = lines[i].split(':', 1)
+                    if len(header_parts) == 2:
+                        self.headers[header_parts[0].strip()] = header_parts[1].strip()
                 
                 self.url = f"http://{host}{path}"
             
@@ -272,48 +330,99 @@ class PyIntruderCLI:
     
     def process_positions(self):
         """Process position markers in the request"""
-        # Replace position markers in URL
-        if '$p$' in self.url:
-            self.url = self.url.replace('$p$', self.replacement_marker)
-            
-        # Replace position markers in data
-        if '$p$' in self.data:
-            self.data = self.data.replace('$p$', self.replacement_marker)
-            
-        # Replace position markers in headers
-        for header_name in self.headers:
-            if '$p$' in self.headers[header_name]:
-                self.headers[header_name] = self.headers[header_name].replace('$p$', self.replacement_marker)
+        if self.multi_position:
+            # Replace multi-position markers
+            for config in self.position_configs:
+                marker = config['marker']
+                replacement = config['replacement_marker']
+                
+                # Replace in URL
+                if marker in self.url:
+                    self.url = self.url.replace(marker, replacement)
+                    
+                # Replace in data
+                if marker in self.data:
+                    self.data = self.data.replace(marker, replacement)
+                    
+                # Replace in headers
+                for header_name in self.headers:
+                    if marker in self.headers[header_name]:
+                        self.headers[header_name] = self.headers[header_name].replace(marker, replacement)
+        else:
+            # Single position mode - use original logic
+            # Replace position markers in URL
+            if self.position_marker in self.url:
+                self.url = self.url.replace(self.position_marker, self.replacement_marker)
+                
+            # Replace position markers in data
+            if self.position_marker in self.data:
+                self.data = self.data.replace(self.position_marker, self.replacement_marker)
+                
+            # Replace position markers in headers
+            for header_name in self.headers:
+                if self.position_marker in self.headers[header_name]:
+                    self.headers[header_name] = self.headers[header_name].replace(self.position_marker, self.replacement_marker)
     
     def prepare_payloads(self):
         """Prepare the payloads based on the attack type"""
-        if self.attack_type == 'Numbers':
-            self.payload_list = [x for x in range(self.from_numbers, self.to_numbers + 1, self.step_numbers)]
-            print(f'[*] Generated {len(self.payload_list)} number payloads from {self.from_numbers} to {self.to_numbers}')
-            
-        elif self.attack_type == 'Wordlist':
-            try:
-                with open(self.wordlist_filename, 'r', errors='ignore') as f:
-                    self.payload_list = [line.rstrip('\n') for line in f]
-                print(f'[*] Loaded {len(self.payload_list)} payloads from wordlist')
-            except Exception as e:
-                print(f'Error loading wordlist: {e}')
-                sys.exit(1)
+        if self.multi_position:
+            # Multi-position mode: generate combinations
+            self.prepare_multi_position_payloads()
+        else:
+            # Single position mode: use original logic
+            if self.attack_type == 'Numbers':
+                self.payload_list = [x for x in range(self.from_numbers, self.to_numbers + 1, self.step_numbers)]
+                print(f'[*] Generated {len(self.payload_list)} number payloads from {self.from_numbers} to {self.to_numbers}')
                 
-        elif self.attack_type == 'BruteForce':
-            self.payload_list = []
-            total_combinations = 0
-            for x in range(self.min_length, self.max_length + 1):
-                total_combinations += len(self.bruteforce_charset) ** x
-                
-            print(f'[*] Generating {total_combinations} bruteforce combinations...')
-            
-            # Generate combinations (this can be memory intensive for large charsets/lengths)
-            for x in range(self.min_length, self.max_length + 1):
-                for y in product(self.bruteforce_charset, repeat=x):
-                    self.payload_list.append(''.join(y))
+            elif self.attack_type == 'Wordlist':
+                try:
+                    with open(self.wordlist_filename, 'r', errors='ignore') as f:
+                        self.payload_list = [line.rstrip('\n') for line in f]
+                    print(f'[*] Loaded {len(self.payload_list)} payloads from wordlist')
+                except Exception as e:
+                    print(f'Error loading wordlist: {e}')
+                    sys.exit(1)
                     
-            print(f'[*] Generated {len(self.payload_list)} bruteforce payloads')
+            elif self.attack_type == 'BruteForce':
+                self.payload_list = []
+                total_combinations = 0
+                for x in range(self.min_length, self.max_length + 1):
+                    total_combinations += len(self.bruteforce_charset) ** x
+                    
+                print(f'[*] Generating {total_combinations} bruteforce combinations...')
+                
+                # Generate combinations (this can be memory intensive for large charsets/lengths)
+                for x in range(self.min_length, self.max_length + 1):
+                    for y in product(self.bruteforce_charset, repeat=x):
+                        self.payload_list.append(''.join(y))
+                        
+                print(f'[*] Generated {len(self.payload_list)} bruteforce payloads')
+    
+    def prepare_multi_position_payloads(self):
+        """Prepare payload combinations for multi-position fuzzing"""
+        # Get all payload lists
+        payload_lists = [config['payloads'] for config in self.position_configs]
+        
+        # Calculate total combinations
+        total_combinations = 1
+        for payloads in payload_lists:
+            total_combinations *= len(payloads)
+            
+        print(f'[*] Multi-position mode: {len(self.position_configs)} positions')
+        for i, config in enumerate(self.position_configs):
+            print(f'    Position {i+1} ({config["marker"]}): {config["type"]} - {len(config["payloads"])} payloads')
+        print(f'[*] Total combinations: {total_combinations}')
+        
+        if total_combinations > 100000:
+            print(f'[!] Warning: {total_combinations} combinations will be generated. This may take a long time!')
+            response = input('Continue? (y/N): ')
+            if response.lower() != 'y':
+                print('[*] Aborted by user')
+                sys.exit(0)
+        
+        # Generate all combinations
+        self.combined_payloads = list(product(*payload_lists))
+        print(f'[*] Generated {len(self.combined_payloads)} payload combinations')
     
     def process_payload(self, payload):
         """Process a single payload with encoding options"""
@@ -345,21 +454,83 @@ class PyIntruderCLI:
     
     def send_request(self, payload):
         """Send a single request with the given payload"""
-        processed_payload = self.process_payload(payload)
+        if self.multi_position:
+            # Multi-position mode: payload is a tuple of payloads
+            return self.send_multi_position_request(payload)
+        else:
+            # Single position mode: use original logic
+            processed_payload = self.process_payload(payload)
+            
+            # Replace the placeholder with the processed payload
+            url = self.url.replace(self.replacement_marker, processed_payload)
+            data = self.data.replace(self.replacement_marker, processed_payload)
+            
+            # URL encode if needed
+            if self.url_encode:
+                data = quote(data, safe='')
+            
+            # Replace in headers
+            headers = {}
+            for header_name in self.headers:
+                headers[header_name] = self.headers[header_name].replace(
+                    self.replacement_marker, processed_payload)
+            
+            try:
+                if self.request_method == 'GET':
+                    r = requests.get(url, params=data, headers=headers)
+                else:  # POST
+                    r = requests.post(url, data=data, headers=headers)
+                    
+                # Store the result
+                status_desc = STATUS_CODES.get(str(r.status_code), 'UNKNOWN')
+                self.results[str(payload)] = [
+                    str(len(r.text)),
+                    f'{r.status_code} {status_desc}',
+                    r.text
+                ]
+                
+                # If we're storing response headers, add them
+                if self.show_headers:
+                    self.results[str(payload)].append(dict(r.headers))
+                
+                self.count += 1
+                
+                # Print progress if verbose
+                if self.verbose:
+                    print(f'[{self.count}/{len(self.payload_list)}] Payload: {payload} | Length: {len(r.text)} | Status: {r.status_code} {status_desc}')
+                else:
+                    # Print a simple progress indicator
+                    sys.stdout.write(f'\r[*] Progress: {self.count}/{len(self.payload_list)} requests')
+                    sys.stdout.flush()
+                    
+            except Exception as e:
+                print(f'\nError processing payload \'{payload}\': {e}')
+    
+    def send_multi_position_request(self, payload_combination):
+        """Send a request with multiple position payloads"""
+        # payload_combination is a tuple like ('payload1', 'payload2', ...)
         
-        # Replace the placeholder with the processed payload
-        url = self.url.replace(self.replacement_marker, processed_payload)
-        data = self.data.replace(self.replacement_marker, processed_payload)
+        # Start with the original request components
+        url = self.url
+        data = self.data
+        headers = {}
+        for header_name in self.headers:
+            headers[header_name] = self.headers[header_name]
+        
+        # Replace each position with its corresponding payload
+        for i, (config, payload) in enumerate(zip(self.position_configs, payload_combination)):
+            processed_payload = self.process_payload(payload)
+            replacement_marker = config['replacement_marker']
+            
+            # Replace in URL, data, and headers
+            url = url.replace(replacement_marker, processed_payload)
+            data = data.replace(replacement_marker, processed_payload)
+            for header_name in headers:
+                headers[header_name] = headers[header_name].replace(replacement_marker, processed_payload)
         
         # URL encode if needed
         if self.url_encode:
             data = quote(data, safe='')
-        
-        # Replace in headers
-        headers = {}
-        for header_name in self.headers:
-            headers[header_name] = self.headers[header_name].replace(
-                self.replacement_marker, processed_payload)
         
         try:
             if self.request_method == 'GET':
@@ -367,9 +538,11 @@ class PyIntruderCLI:
             else:  # POST
                 r = requests.post(url, data=data, headers=headers)
                 
-            # Store the result
+            # Store the result with combination as key
             status_desc = STATUS_CODES.get(str(r.status_code), 'UNKNOWN')
-            self.results[str(payload)] = [
+            combination_key = ' | '.join([f'{config["marker"]}:{payload}' for config, payload in zip(self.position_configs, payload_combination)])
+            
+            self.results[combination_key] = [
                 str(len(r.text)),
                 f'{r.status_code} {status_desc}',
                 r.text
@@ -377,29 +550,38 @@ class PyIntruderCLI:
             
             # If we're storing response headers, add them
             if self.show_headers:
-                self.results[str(payload)].append(dict(r.headers))
+                self.results[combination_key].append(dict(r.headers))
             
             self.count += 1
             
             # Print progress if verbose
             if self.verbose:
-                print(f'[{self.count}/{len(self.payload_list)}] Payload: {payload} | Length: {len(r.text)} | Status: {r.status_code} {status_desc}')
+                print(f'[{self.count}/{len(self.combined_payloads)}] Payloads: {combination_key} | Length: {len(r.text)} | Status: {r.status_code} {status_desc}')
             else:
                 # Print a simple progress indicator
-                sys.stdout.write(f'\r[*] Progress: {self.count}/{len(self.payload_list)} requests')
+                sys.stdout.write(f'\r[*] Progress: {self.count}/{len(self.combined_payloads)} requests')
                 sys.stdout.flush()
                 
         except Exception as e:
-            print(f'\nError processing payload \'{payload}\': {e}')
+            print(f'\nError processing payload combination \'{combination_key}\': {e}')
     
     def run_attack(self):
         """Run the attack with multiple threads"""
-        print(f'[*] Starting {self.attack_type} attack with {self.threads} threads...')
+        if self.multi_position:
+            attack_type = 'Multi-Position'
+            total_payloads = len(self.combined_payloads)
+            payload_source = self.combined_payloads
+        else:
+            attack_type = self.attack_type
+            total_payloads = len(self.payload_list)
+            payload_source = self.payload_list
+            
+        print(f'[*] Starting {attack_type} attack with {self.threads} threads...')
         print(f'[*] Target: {self.url}')
         print(f'[*] Method: {self.request_method}')
         
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
-            executor.map(self.send_request, self.payload_list)
+            executor.map(self.send_request, payload_source)
             
         print(f'\n[+] Attack complete. {self.count} requests sent.')
         
@@ -422,7 +604,10 @@ class PyIntruderCLI:
                 status_counts[status] = 1
         
         print('\n--- Results Summary ---')
-        print(f'Total payloads: {len(self.payload_list)}')
+        if self.multi_position:
+            print(f'Total payload combinations: {len(self.combined_payloads)}')
+        else:
+            print(f'Total payloads: {len(self.payload_list)}')
         print(f'Total responses: {len(self.results)}')
         print('\nStatus Code Distribution:')
         for status in sorted(status_counts.keys()):
@@ -452,7 +637,10 @@ class PyIntruderCLI:
             if '200' not in self.results[payload][1] and shown_responses < 5:
                 status = self.results[payload][1]
                 length = self.results[payload][0]
-                print(f'  Payload: {payload}')
+                if self.multi_position:
+                    print(f'  Combination: {payload}')
+                else:
+                    print(f'  Payload: {payload}')
                 print(f'    Status: {status}')
                 print(f'    Length: {length}')
                 shown_responses += 1
@@ -466,7 +654,10 @@ class PyIntruderCLI:
                 if self.results[payload][0] != most_common_length and shown_responses < 5:
                     status = self.results[payload][1]
                     length = self.results[payload][0]
-                    print(f'  Payload: {payload}')
+                    if self.multi_position:
+                        print(f'  Combination: {payload}')
+                    else:
+                        print(f'  Payload: {payload}')
                     print(f'    Status: {status}')
                     print(f'    Length: {length}')
                     shown_responses += 1
@@ -480,6 +671,83 @@ class PyIntruderCLI:
         except Exception as e:
             print(f'Error saving results: {e}')
 
+    def parse_multi_position_config(self, multi_position_args):
+        """Parse multi-position configuration"""
+        for marker, config in multi_position_args:
+            position_config = {
+                'marker': marker,
+                'replacement_marker': f'@@@@{len(self.position_configs)}@@@@',
+                'payloads': []
+            }
+            
+            # Parse config string
+            if config.startswith('w:'):
+                # Wordlist: w:wordlist.txt
+                wordlist_file = config[2:]
+                try:
+                    with open(wordlist_file, 'r', errors='ignore') as f:
+                        position_config['payloads'] = [line.rstrip('\n') for line in f]
+                    position_config['type'] = 'Wordlist'
+                    position_config['source'] = wordlist_file
+                except Exception as e:
+                    print(f'Error loading wordlist {wordlist_file}: {e}')
+                    sys.exit(1)
+                    
+            elif config.startswith('n:'):
+                # Numbers: n:1-100-1
+                numbers_config = config[2:]
+                parts = numbers_config.split('-')
+                if len(parts) >= 2:
+                    start = int(parts[0])
+                    end = int(parts[1])
+                    step = int(parts[2]) if len(parts) > 2 else 1
+                    position_config['payloads'] = list(range(start, end + 1, step))
+                    position_config['type'] = 'Numbers'
+                    position_config['source'] = f'{start}-{end}-{step}'
+                else:
+                    print(f'Invalid numbers format for position {marker}. Use n:START-END-STEP')
+                    sys.exit(1)
+                    
+            elif config.startswith('b:'):
+                # Bruteforce: b:charset:min:max
+                bf_parts = config[2:].split(':')
+                if len(bf_parts) == 3:
+                    charset, min_len, max_len = bf_parts[0], int(bf_parts[1]), int(bf_parts[2])
+                    position_config['payloads'] = []
+                    for length in range(min_len, max_len + 1):
+                        for combo in product(charset, repeat=length):
+                            position_config['payloads'].append(''.join(combo))
+                    position_config['type'] = 'BruteForce'
+                    position_config['source'] = f'{charset}:{min_len}:{max_len}'
+                else:
+                    print(f'Invalid bruteforce format for position {marker}. Use b:CHARSET:MIN:MAX')
+                    sys.exit(1)
+            else:
+                print(f'Invalid config format for position {marker}. Use w:file, n:start-end-step, or b:charset:min:max')
+                sys.exit(1)
+                
+            self.position_configs.append(position_config)
+            print(f'[*] Position {marker}: {position_config["type"]} with {len(position_config["payloads"])} payloads')
+    
+    def validate_multi_position_markers(self):
+        """Validate that all defined position markers exist in the request"""
+        for config in self.position_configs:
+            marker = config['marker']
+            found = False
+            
+            if marker in self.url:
+                found = True
+            if marker in self.data:
+                found = True
+            for header_name in self.headers:
+                if marker in self.headers[header_name]:
+                    found = True
+                    break
+                    
+            if not found:
+                print(f'Error: Position marker "{marker}" not found in the request')
+                sys.exit(1)
+    
     def run(self):
         """Main execution function"""
         self.parse_arguments()
