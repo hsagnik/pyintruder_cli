@@ -223,7 +223,7 @@ For more advanced usage options, run: `python3 pyintruder_cli.py --help`
 - **Input Validation Testing**: Test different input types across multiple fields
 
 ## Credits
-PyIntruder CLI (2025) is designed and developed by Sagnik Haldar (hsagnik) as a complete CLI redesign of the original ![PyIntruder](https://github.com/Yash114Bansal/PyIntruder), which was created by Yash Bansal and Sagnik Haldar in 2021.
+PyIntruder CLI (2025) is designed and developed by Sagnik Haldar (hsagnik), Swarup Natukula and Nandan Gupta as a complete CLI redesign of the original ![PyIntruder](https://github.com/Yash114Bansal/PyIntruder), which was created by Yash Bansal and Sagnik Haldar in 2021.
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
