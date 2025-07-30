@@ -232,4 +232,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Future Enhancements
-Grouping the responses by response length.
+Grouping the responses by response length and display the count.
