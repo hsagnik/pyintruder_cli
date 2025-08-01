@@ -3,7 +3,7 @@
 
 PyIntruder CLI is a powerful command-line web fuzzing and penetration testing tool designed for security professionals, bug bounty hunters, and security researchers. It offers high-speed request capabilities in a lightweight command-line package.
 
-![demo2](https://github.com/user-attachments/assets/6aba69a7-7520-4fa4-91c3-6a2c13e7fb10)
+![third](https://github.com/user-attachments/assets/2bd01f21-6787-45ef-bfeb-fc802590a5cf)
 
 ## Installation
 ```bash
