@@ -98,9 +98,9 @@ PyIntruder CLI uses the symbol `$p$` to mark the position for payload insertion 
     python3 pyintruder_cli.py -u 'http://example.com/search?q=$p$' -w /path/to/special_chars.txt --url-encode
     ```
 
-11. **Using a custom position marker:**
+11. **Using a single custom position marker:**
     ```bash
-    python3 pyintruder_cli.py -u 'http://example.com/search?q=INJECT_HERE' -mp 'INJECT_HERE' -w /path/to/payloads.txt
+    python3 pyintruder_cli.py -u 'http://example.com/search?q=INJECT_HERE' -m 'INJECT_HERE' -w /path/to/payloads.txt
     ```
 
 ## Multi-Position Fuzzing
