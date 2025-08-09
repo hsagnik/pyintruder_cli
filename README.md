@@ -233,3 +233,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Future Enhancements
 Grouping the responses by response length and display the count.
+Support for web sockets.
+Dynamic thread pool sizing based on system resources, making it more efficient.
+Add different possible attack combinations.
