@@ -266,66 +266,91 @@ class PyIntruderCLI:
         """Parse an HTTP request from a file"""
         try:
             with open(filename, 'r') as f:
-                lines = [line.rstrip("\n") for line in f.readlines() if line.strip()]
+                lines = [line.rstrip("\n") for line in f.readlines()]
+                
+            # Remove empty lines from the beginning and find the first line
+            while lines and not lines[0].strip():
+                lines.pop(0)
+                
+            if not lines:
+                raise ValueError("Empty request file")
                 
             # First line contains method and path
             first_line = lines[0].split()
+            if len(first_line) < 2:
+                raise ValueError("Invalid request line format")
+                
             self.request_method = first_line[0]
+            path = first_line[1]
             
-            # Extract URL and data for GET requests
+            # Find headers section and data section
+            header_end = len(lines)
+            data_start = len(lines)
+            host = ""
+            is_https = False
+            
+            # Parse headers
+            for i in range(1, len(lines)):
+                line = lines[i]
+                if not line.strip():  # Empty line indicates end of headers
+                    header_end = i
+                    data_start = i + 1
+                    break
+                    
+                if line.lower().startswith("host:"):
+                    host = line[5:].strip()
+                
+                # Check for HTTPS indicators
+                if any(indicator in line.lower() for indicator in ['https://', 'secure', 'ssl']):
+                    is_https = True
+                
+                # Add the header
+                header_parts = line.split(':', 1)
+                if len(header_parts) == 2:
+                    self.headers[header_parts[0].strip()] = header_parts[1].strip()
+            
+            # Determine protocol (check for HTTPS indicators)
+            protocol = "https" if is_https else "http"
+            
+            # Handle GET requests
             if self.request_method == "GET":
-                path_parts = first_line[1].split('?')
-                path = path_parts[0]
+                path_parts = path.split('?')
+                clean_path = path_parts[0]
                 if len(path_parts) > 1:
                     self.data = path_parts[1]
-                
-                # Get the host and other headers
-                host = ""
-                for i in range(1, len(lines)):
-                    if not lines[i].strip():
-                        break
-                    
-                    if lines[i].lower().startswith("host:"):
-                        host = lines[i][5:].strip()
-                    
-                    # Add the header
-                    header_parts = lines[i].split(':', 1)
-                    if len(header_parts) == 2:
-                        self.headers[header_parts[0].strip()] = header_parts[1].strip()
-                
-                self.url = f"http://{host}{path}"
+                else:
+                    self.data = ""
+                self.url = f"{protocol}://{host}{clean_path}"
             
-            # Extract headers and data for POST requests
+            # Handle POST requests
             elif self.request_method == "POST":
-                path = first_line[1]
+                self.url = f"{protocol}://{host}{path}"
                 
-                # Get the host and other headers
-                data_start = 0
-                host = ""
-                for i in range(1, len(lines)):
-                    if not lines[i].strip():
-                        data_start = i + 1
-                        break
-                    
-                    if lines[i].lower().startswith("host:"):
-                        host = lines[i][5:].strip()
-                    
-                    # Add the header
-                    header_parts = lines[i].split(':', 1)
-                    if len(header_parts) == 2:
-                        self.headers[header_parts[0].strip()] = header_parts[1].strip()
-                
-                self.url = f"http://{host}{path}"
-                
-                # Get the data if it exists
-                if data_start > 0 and data_start < len(lines):
-                    self.data = lines[data_start]
+                # Get the POST data
+                if data_start < len(lines):
+                    # Combine all data lines (in case POST data spans multiple lines)
+                    post_data_lines = []
+                    for i in range(data_start, len(lines)):
+                        if lines[i].strip():  # Only add non-empty lines
+                            post_data_lines.append(lines[i])
+                    self.data = '\n'.join(post_data_lines) if post_data_lines else ""
+                else:
+                    self.data = ""
             
             else:
                 raise ValueError(f"Unsupported request method: {self.request_method}")
+            
+            # Debug output to help troubleshoot
+            if not host:
+                raise ValueError("No Host header found in request")
                 
         except Exception as e:
             print(f"Error parsing request file: {e}")
+            print(f"Make sure the request file has the correct format:")
+            print(f"- First line: METHOD /path HTTP/1.1")
+            print(f"- Headers: Name: Value")
+            print(f"- Empty line")
+            print(f"- POST data (if applicable)")
             sys.exit(1)
     
     def process_positions(self):
