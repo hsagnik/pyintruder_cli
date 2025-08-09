@@ -2,7 +2,7 @@
 """
 PyIntruder CLI - A Powerful Command Line Web Fuzzing Tool
 
-Copyright (C) 2023-2025 hsagnik
+Copyright (C) 2023-2025 pyintruder-cli team
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
@@ -101,7 +101,7 @@ class PyIntruderCLI:
 
 +-----------[ PyIntruder CLI - A Powerful Intruder ]-----------+
 |                                                              |
-|  Version: {version}                        Author: hsagnik       |
+|  Version: {version}                Author: PyIntruder-cli team   |
 |  Mode: CLI                                                   |
 |  License: MIT                                                |
 |                    Copyright © 2023-{current_year}                     |
